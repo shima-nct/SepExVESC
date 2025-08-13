@@ -25,7 +25,7 @@ constexpr uint8_t FIELD_VESC_ID = 0x8;        // VESC ID: VESC Tool/App Settings
 constexpr int SAMPLES_COUNT = 20; // スロットル入力の平均を取るためのサンプル数。20サンプル（1ms毎に取得）の移動平均を計算します。
 
 // --- 界磁電流 ---
-constexpr float FIELD_CURRENT_MA_MAX = 1000.0f; // 界磁電流[mA]
+constexpr float FIELD_CURRENT_A_MAX = 1.0f; // 界磁電流[A]
 static int field_current_samples[SAMPLES_COUNT];
 static int field_current_sample_index = 0;
 constexpr float FIELD_CURRENT_MIN = 0.29f;
@@ -80,8 +80,8 @@ void vescControlTask(void *pvParameters) {
 
     float field_current_percent = (field_current_sum / (float)(SAMPLES_COUNT * ADC_RESOLUTION));
     float field_current_clamped = (field_current_percent - FIELD_CURRENT_MIN) / (FIELD_CURRENT_MAX - FIELD_CURRENT_MIN);
-    float field_current_ma = constrain(field_current_clamped, 0.0f, 1.0f)*FIELD_CURRENT_MA_MAX;
-    int32_t scaled_field_current_ma = (int32_t)(field_current_ma * 1000.0f);
+    float field_current_a = constrain(field_current_clamped, 0.0f, 1.0f)*FIELD_CURRENT_A_MAX;
+    int32_t scaled_field_current_a = (int32_t)(field_current_a * 1000.0f);
 
     float throttle_percent = (throttle_sum / (float)(SAMPLES_COUNT * ADC_RESOLUTION));
     float throttle_clamped = (throttle_percent - HALL_MIN) / (HALL_MAX - HALL_MIN);
@@ -105,15 +105,15 @@ void vescControlTask(void *pvParameters) {
     memcpy(armature_msg.data, buf, sizeof(buf));
     armature_msg.data_length_code = sizeof(scaled_throttle_duty);
 
-    uint8_t field_buf[4] = {(uint8_t)(scaled_field_current_ma >> 24), (uint8_t)(scaled_field_current_ma >> 16),
-                            (uint8_t)(scaled_field_current_ma >> 8), (uint8_t)(scaled_field_current_ma)};
+    uint8_t field_buf[4] = {(uint8_t)(scaled_field_current_a >> 24), (uint8_t)(scaled_field_current_a >> 16),
+                            (uint8_t)(scaled_field_current_a >> 8), (uint8_t)(scaled_field_current_a)};
     memcpy(field_msg.data, field_buf, sizeof(field_buf));
-    field_msg.data_length_code = sizeof(scaled_field_current_ma);
+    field_msg.data_length_code = sizeof(scaled_field_current_a);
 
     Serial.print("PWM/%:");
     Serial.println(scaled_throttle_duty / 1000);
-    Serial.print("Field Current/mA:");
-    Serial.println(scaled_field_current_ma / 1000);
+    Serial.print("Field Current/A:");
+    Serial.println(scaled_field_current_a / 1000);
 
     if (twai_transmit(&field_msg, pdMS_TO_TICKS(10)) == ESP_OK) {
       if (twai_transmit(&armature_msg, pdMS_TO_TICKS(10)) != ESP_OK) {
