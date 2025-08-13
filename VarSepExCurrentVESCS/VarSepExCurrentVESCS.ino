@@ -79,14 +79,14 @@ void vescControlTask(void *pvParameters) {
     }
 
     float field_current_percent = (field_current_sum / (float)(SAMPLES_COUNT * ADC_RESOLUTION));
-    float field_current_pwm = (field_current_percent - FIELD_CURRENT_MIN) / (FIELD_CURRENT_MAX - FIELD_CURRENT_MIN);
-    field_current_pwm = constrain(field_current_pwm, 0.0f, 1.0f); // 0.0–1.0
-    int32_t scaled_field_current = (int32_t)(field_current_pwm * 100000.0f);
+    float field_current_clamped = (field_current_percent - FIELD_CURRENT_MIN) / (FIELD_CURRENT_MAX - FIELD_CURRENT_MIN);
+    float field_current_ma = constrain(field_current_clamped, 0.0f, 1.0f)*FIELD_CURRENT_MA_MAX;
+    int32_t scaled_field_current_ma = (int32_t)(field_current_ma * 1000.0f);
 
     float throttle_percent = (throttle_sum / (float)(SAMPLES_COUNT * ADC_RESOLUTION));
-    float throttle_pwm = (throttle_percent - HALL_MIN) / (HALL_MAX - HALL_MIN);
-    throttle_pwm = constrain(throttle_pwm, 0.0f, 1.0f); // 0.0–1.0
-    int32_t scaled = (int32_t)(throttle_pwm * 100000.0f);
+    float throttle_clamped = (throttle_percent - HALL_MIN) / (HALL_MAX - HALL_MIN);
+    float throttle_duty = constrain(throttle_clamped, 0.0f, 1.0f);
+    int32_t scaled_throttle_duty = (int32_t)(throttle_duty * 100000.0f);
 
     twai_message_t field_msg;
     memset(&field_msg, 0, sizeof(field_msg));
@@ -100,29 +100,24 @@ void vescControlTask(void *pvParameters) {
     armature_msg.flags = TWAI_MSG_FLAG_EXTD;
     field_msg.flags = TWAI_MSG_FLAG_EXTD;
 
-    uint8_t buf[4] = {(uint8_t)(scaled >> 24), (uint8_t)(scaled >> 16),
-                      (uint8_t)(scaled >> 8), (uint8_t)(scaled)};
+    uint8_t buf[4] = {(uint8_t)(scaled_throttle_duty >> 24), (uint8_t)(scaled_throttle_duty >> 16),
+                      (uint8_t)(scaled_throttle_duty >> 8), (uint8_t)(scaled_throttle_duty)};
     memcpy(armature_msg.data, buf, sizeof(buf));
-    armature_msg.data_length_code = sizeof(scaled);
+    armature_msg.data_length_code = sizeof(scaled_throttle_duty);
 
-    uint8_t field_buf[4] = {(uint8_t)(scaled_field_current >> 24), (uint8_t)(scaled_field_current >> 16),
-                            (uint8_t)(scaled_field_current >> 8), (uint8_t)(scaled_field_current)};
-    // 作成したバイト配列をCANメッセージのデータフィールドにコピーします。
+    uint8_t field_buf[4] = {(uint8_t)(scaled_field_current_ma >> 24), (uint8_t)(scaled_field_current_ma >> 16),
+                            (uint8_t)(scaled_field_current_ma >> 8), (uint8_t)(scaled_field_current_ma)};
     memcpy(field_msg.data, field_buf, sizeof(field_buf));
-    // データ長をセットします (ここでは32ビット整数なので4バイト)。
-    field_msg.data_length_code = sizeof(scaled_field_current);
+    field_msg.data_length_code = sizeof(scaled_field_current_ma);
 
     Serial.print("PWM/%:");
-    Serial.println(scaled / 1000);
+    Serial.println(scaled_throttle_duty / 1000);
     Serial.print("Field Current/mA:");
-    Serial.println(scaled_field_current / 1000);
+    Serial.println(scaled_field_current_ma / 1000);
 
-    // 送信（送信待ち最大 10 ms）
-    // field_msg送信結果でarmature_msgの内容を切り替え
     if (twai_transmit(&field_msg, pdMS_TO_TICKS(10)) == ESP_OK) {
-      // field_msg送信成功 -> ADC値に基づくPWMを送信
       if (twai_transmit(&armature_msg, pdMS_TO_TICKS(10)) != ESP_OK) {
-        Serial.println("TWAI transmit failed (armature)"); // CANメッセージの送信に失敗
+        Serial.println("TWAI transmit failed (armature)");
       }
     } else {
       Serial.println("TWAI transmit failed (field)"); // 界磁電流メッセージ送信失敗
