@@ -112,8 +112,8 @@ void vescControlTask(void *pvParameters) {
 
     Serial.print("PWM/%:");
     Serial.println(scaled_throttle_duty / 1000);
-    Serial.print("Field Current/A:");
-    Serial.println(scaled_field_current_a / 1000);
+    Serial.print("Field Current/mA:");
+    Serial.println(scaled_field_current_a);
 
     if (twai_transmit(&field_msg, pdMS_TO_TICKS(10)) == ESP_OK) {
       if (twai_transmit(&armature_msg, pdMS_TO_TICKS(10)) != ESP_OK) {
